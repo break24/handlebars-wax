@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const requireGlob = require('require-glob');
+const glob = require('glob');
 
 const toString = Object.prototype.toString;
 
@@ -26,41 +27,6 @@ function getTypeOf(value) {
 		.call(value)
 		.substr(8, 3)
 		.toLowerCase();
-}
-
-function hookRequire(handlebars, extensions) {
-	// istanbul ignore next
-	extensions = extensions || [];
-
-	let originalHooks; // eslint-disable-line prefer-const
-
-	function compileFile(module, filename) {
-		const templateString = fs.readFileSync(filename, 'utf8');
-
-		module.exports = handlebars.compile(templateString);
-	}
-
-	function cacheHook(extension) {
-		const originalHook = require.extensions[extension];
-
-		require.extensions[extension] = compileFile;
-
-		return originalHook;
-	}
-
-	function uncacheHook(extension) {
-		require.extensions[extension] = originalHooks[extension];
-	}
-
-	function unhookRequire() {
-		extensions.forEach(uncacheHook);
-	}
-
-	// Hook
-	originalHooks = extensions.map(cacheHook);
-
-	// Unhook
-	return unhookRequire;
 }
 
 // Map Reduce
@@ -171,12 +137,16 @@ HandlebarsWax.prototype.partials = function (partials, options) {
 	options.keygen = options.parsePartialName;
 	options.reducer = options.reducer || reducer;
 
-	const unhookRequire = hookRequire(options.handlebars, options.extensions);
-
-	options.handlebars.registerPartial(resolveValue(options, partials));
-
-	unhookRequire();
-
+	const files = glob.sync(partials, options);
+	const compiledPartials = {};
+	files.forEach(filenamePath => {
+	  const templateString = fs.readFileSync(filenamePath, 'utf8');
+	  const p = options.handlebars.compile(templateString);
+	  const baseName = path.basename(filenamePath);
+	  compiledPartials[baseName.split('.')[0]] = p;
+	});
+	options.handlebars.registerPartial(compiledPartials);
+  
 	return this;
 };
 
